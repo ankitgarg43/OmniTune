@@ -82,6 +82,7 @@ class TuneUpPanel(QWidget):
 
         btns = QHBoxLayout()
         self.run_btn = QPushButton("Run TuneUp")
+        self.run_btn.setProperty("primary", True)
         self.run_btn.clicked.connect(self._run)
         btns.addWidget(self.run_btn)
         self.view_btn = QPushButton("View Script")
