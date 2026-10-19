@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# PyInstaller
+build/
+dist/
+*.spec.bak
+
+# Visual Studio
+.vs/
+*.suo
+*.user
+
+# Misc
+*.log
+.DS_Store
