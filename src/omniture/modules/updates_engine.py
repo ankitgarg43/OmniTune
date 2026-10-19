@@ -8,6 +8,7 @@ the same underlying OS API (Microsoft.Update.Session COM) that wumgr uses.
 COM access (pywin32) is Windows-only and guarded; pure helpers (search
 criteria, KB extraction, result formatting) work everywhere and are tested.
 """
+import subprocess
 import sys
 
 try:
@@ -16,6 +17,11 @@ try:
     _HAVE_COM = True
 except ImportError:  # non-Windows (CI)
     _HAVE_COM = False
+
+try:
+    import winreg
+except ImportError:  # non-Windows (CI)
+    winreg = None
 
 # WUA search criteria. IsHidden=0 keeps hidden updates out of the main list
 # (they can still be managed explicitly).
@@ -219,3 +225,86 @@ def result_name(code):
 def com_available():
     """True when the WUA COM API can be used on this machine."""
     return _HAVE_COM and sys.platform == "win32"
+
+
+# -- automatic-update policy -----------------------------------------------------
+_AU_PATH = r"SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU"
+
+# mode -> (label, {value_name: dword})
+AU_MODES = {
+    "notify": ("Notify before downloading",
+               {"AUOptions": 2, "NoAutoUpdate": 0}),
+    "download": ("Download automatically, notify before install",
+                 {"AUOptions": 3, "NoAutoUpdate": 0}),
+    "auto": ("Install updates automatically",
+             {"AUOptions": 4, "NoAutoUpdate": 0}),
+    "off": ("Turn off automatic updates",
+            {"NoAutoUpdate": 1}),
+}
+
+
+def au_policy_values(mode):
+    """Return the registry values for an AU *mode* (pure helper)."""
+    if mode not in AU_MODES:
+        raise ValueError(f"Unknown AU mode: {mode!r}")
+    _label, values = AU_MODES[mode]
+    return dict(values)
+
+
+def set_au_policy(mode):
+    """Apply an automatic-update policy (HKLM, needs admin)."""
+    _need_com()  # winreg is the actual need; both are Windows-only
+    for name, value in au_policy_values(mode).items():
+        with winreg.CreateKeyEx(winreg.HKEY_LOCAL_MACHINE, _AU_PATH,
+                                0, winreg.KEY_WRITE) as key:
+            winreg.SetValueEx(key, name, 0, winreg.REG_DWORD, value)
+
+
+def get_au_policy():
+    """Return the current AU mode key, or 'unmanaged' if not set by policy."""
+    _need_com()
+    try:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, _AU_PATH,
+                             0, winreg.KEY_READ) as key:
+            try:
+                noauto, _t = winreg.QueryValueEx(key, "NoAutoUpdate")
+            except FileNotFoundError:
+                noauto = 0
+            if noauto == 1:
+                return "off"
+            try:
+                opt, _t = winreg.QueryValueEx(key, "AUOptions")
+            except FileNotFoundError:
+                return "unmanaged"
+            for mode, (_label, values) in AU_MODES.items():
+                if values.get("AUOptions") == opt and mode != "off":
+                    return mode
+            return "unmanaged"
+    except FileNotFoundError:
+        return "unmanaged"
+
+
+# -- offline .msu install ----------------------------------------------------------
+def build_wusa_command(msu_path):
+    """Build the wusa.exe command for an .msu file (pure helper)."""
+    return ["wusa.exe", msu_path, "/quiet", "/norestart"]
+
+
+def install_msu(msu_path, log=None, timeout=1800):
+    """Install an .msu update package. Returns (ok, message)."""
+    if sys.platform != "win32":
+        raise RuntimeError("wusa.exe requires Windows.")
+    proc = subprocess.run(build_wusa_command(msu_path), capture_output=True,
+                          timeout=timeout, text=True)
+    # wusa: 0 = success, 3010 = success, reboot required.
+    if proc.returncode in (0, 3010):
+        msg = "Installed successfully."
+        if proc.returncode == 3010:
+            msg += " Reboot required."
+        if log:
+            log(msg)
+        return True, msg
+    msg = f"wusa.exe exited with code {proc.returncode}."
+    if log:
+        log(msg)
+    return False, msg

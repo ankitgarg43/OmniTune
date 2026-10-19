@@ -142,3 +142,113 @@ def largest_files(node, n=100):
                     heapq.heapreplace(best, item)
     best.sort(key=lambda t: t[0], reverse=True)
     return [(size, node_) for size, _, node_ in best]
+
+
+def iter_files(node):
+    """Yield (path, size) for every file in the tree (iterative)."""
+    stack = [node]
+    while stack:
+        current = stack.pop()
+        for child in current.get("children", []):
+            if child["is_dir"]:
+                stack.append(child)
+            else:
+                yield child["path"], child["size"]
+
+
+def _hash_file(path, limit=None):
+    """SHA-256 of a file (first *limit* bytes when set). None on error."""
+    import hashlib
+    digest = hashlib.sha256()
+    try:
+        with open(path, "rb") as fh:
+            remaining = limit
+            while True:
+                chunk = fh.read(65536 if remaining is None
+                                else min(65536, remaining))
+                if not chunk:
+                    break
+                digest.update(chunk)
+                if remaining is not None:
+                    remaining -= len(chunk)
+                    if remaining <= 0:
+                        break
+    except OSError:
+        return None
+    return digest.hexdigest()
+
+
+class _DupCancelled(Exception):
+    pass
+
+
+def find_duplicates(node, progress_cb=None, cancel_check=None):
+    """Find duplicate files by content.
+
+    Groups by size first (cheap), then by first-megabyte hash, then by full
+    SHA-256. Returns [{"size": int, "hash": str, "paths": [str, ...]}, ...]
+    with 2+ paths each, largest groups first.
+    """
+    by_size = {}
+    for path, size in iter_files(node):
+        if size == 0:
+            continue  # empty files are trivially "duplicates"; skip
+        by_size.setdefault(size, []).append(path)
+
+    groups = []
+    done = 0
+    candidates = [paths for paths in by_size.values() if len(paths) > 1]
+    total = sum(len(p) for p in candidates)
+    for paths in candidates:
+        if cancel_check and cancel_check():
+            raise _DupCancelled()
+        # Stage 1: first-megabyte hash.
+        by_head = {}
+        for path in paths:
+            head = _hash_file(path, limit=1048576)
+            if head is not None:
+                by_head.setdefault(head, []).append(path)
+            done += 1
+            if progress_cb and done % 50 == 0:
+                progress_cb(done, total)
+        # Stage 2: full hash for surviving groups.
+        for head_paths in by_head.values():
+            if len(head_paths) < 2:
+                continue
+            by_full = {}
+            for path in head_paths:
+                full = _hash_file(path)
+                if full is not None:
+                    by_full.setdefault(full, []).append(path)
+            for full_paths in by_full.values():
+                if len(full_paths) > 1:
+                    groups.append({
+                        "size": os.path.getsize(full_paths[0]),
+                        "hash": _hash_file(full_paths[0]),
+                        "paths": sorted(full_paths),
+                    })
+    if progress_cb:
+        progress_cb(total, total)
+    groups.sort(key=lambda g: (g["size"] * len(g["paths"])), reverse=True)
+    return groups
+
+
+def export_json(node, dest_path):
+    """Write the scan tree as JSON. Returns bytes written."""
+    import json
+    with open(dest_path, "w", encoding="utf-8") as fh:
+        json.dump(node, fh, indent=1)
+    return os.path.getsize(dest_path)
+
+
+def export_csv(node, dest_path):
+    """Write a flat file list (path, size) as CSV. Returns row count."""
+    import csv
+    rows = 0
+    with open(dest_path, "w", encoding="utf-8", newline="") as fh:
+        writer = csv.writer(fh)
+        writer.writerow(["path", "size_bytes"])
+        for path, size in iter_files(node):
+            writer.writerow([path, size])
+            rows += 1
+    return rows

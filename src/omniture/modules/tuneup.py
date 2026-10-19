@@ -13,12 +13,14 @@ import sys
 from PySide6.QtCore import QProcess, QUrl, Qt
 from PySide6.QtGui import QDesktopServices, QTextCursor
 from PySide6.QtWidgets import (
+    QDialog,
     QHBoxLayout,
     QLabel,
     QListWidget,
     QMessageBox,
     QProgressBar,
     QPushButton,
+    QTextBrowser,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -34,7 +36,6 @@ DESCRIPTION = (
 ROADMAP = [
     "Per-phase toggles (run only the phases you want) - next",
     "Native Python reimplementation, phase by phase - next",
-    "In-app HTML report viewer - next",
 ]
 
 PHASES = [
@@ -92,6 +93,11 @@ class TuneUpPanel(QWidget):
         self.report_btn = QPushButton("Open Latest Report")
         self.report_btn.clicked.connect(self._open_report)
         btns.addWidget(self.report_btn)
+        self.view_report_btn = QPushButton("View Report In-App")
+        self.view_report_btn.setToolTip(
+            "Show the latest HTML health report inside OmniTune.")
+        self.view_report_btn.clicked.connect(self._view_report)
+        btns.addWidget(self.view_report_btn)
         btns.addStretch(1)
         layout.addLayout(btns)
 
@@ -120,8 +126,34 @@ class TuneUpPanel(QWidget):
         else:
             QMessageBox.information(self, "Report", "No PC-Health-Report found on the Desktop yet.")
 
+    def _view_report(self):
+        report = latest_report()
+        if not report:
+            QMessageBox.information(self, "Report", "No PC-Health-Report found on the Desktop yet.")
+            return
+        try:
+            with open(report, "r", encoding="utf-8", errors="replace") as fh:
+                html = fh.read()
+        except OSError as exc:
+            QMessageBox.warning(self, "Report", f"Could not read report: {exc}")
+            return
+        dlg = QDialog(self)
+        dlg.setWindowTitle("PC Health Report - " + os.path.basename(report))
+        dlg.resize(860, 640)
+        layout = QVBoxLayout(dlg)
+        browser = QTextBrowser()
+        browser.setHtml(html)
+        browser.setOpenExternalLinks(True)
+        layout.addWidget(browser)
+        close = QPushButton("Close")
+        close.clicked.connect(dlg.accept)
+        layout.addWidget(close, alignment=Qt.AlignRight)
+        dlg.exec()
+
     def _refresh_report_button(self):
-        self.report_btn.setEnabled(latest_report() is not None)
+        has_report = latest_report() is not None
+        self.report_btn.setEnabled(has_report)
+        self.view_report_btn.setEnabled(has_report)
 
     def _run(self):
         script = self._script_path()

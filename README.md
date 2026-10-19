@@ -14,9 +14,9 @@ OmniTune is a clean rebuild: every feature is reimplemented from scratch in Pyth
 
 ## Status
 
-v0.4.0 — working Disk analyzer, TuneUp tab, functional Debloat module, plus working Updates (WUA check/install/hide/history) and Drivers (hardware scan, problem flagging, driver updates via Windows Update) modules. See [CHANGELOG.md](CHANGELOG.md).
+v0.5.0 — working Disk analyzer (treemap, duplicates, CSV/JSON export, cleanup), TuneUp tab (in-app report viewer), functional Debloat (tweaks, AppX removal + re-register, profiles), plus Updates (WUA check/install/hide/history, AU policy presets, .msu install) and Drivers (hardware scan, problem flagging, WU driver updates, pnputil INF install, driver export) modules. Custom app icon and polished dark theme. See [CHANGELOG.md](CHANGELOG.md).
 
-Planned build order: Disk → Debloat → Updates → Drivers.
+All four modules are now fully functional. Remaining future work: SDI-style offline driver-pack index (torrent/7z), per-update COM progress bars, per-user AppX scope, TuneUp per-phase toggles and native reimplementation.
 
 ## Requirements
 

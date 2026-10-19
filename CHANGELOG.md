@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.5.0 — 2026-10-19
+
+- **Design pass**: custom OmniTune app icon (tuning fork + gear, electric
+  blue) wired into the EXE metadata and window title bar; dark theme extended
+  (tree widgets, group boxes, radios/checkboxes, heading + dim label styles).
+- Disk: **duplicate file detection** (size → first-MB hash → full SHA-256, in
+  a background worker with progress) and **CSV/JSON scan export**.
+- Debloat: custom bloatware entries now **persist between sessions**;
+  **export/import tweak profiles** (JSON); **re-register AppX** packages.
+- Updates: **automatic-update policy presets** (notify / download / auto /
+  off via the WindowsUpdate\AU registry policy), **offline .msu install**
+  (wusa.exe), and a determinate install **progress bar**.
+- Drivers: **install drivers from a folder** (pnputil /add-driver /subdirs
+  /install) and **export installed drivers** (pnputil /export-driver).
+- TuneUp: **in-app HTML report viewer** (QTextBrowser) alongside opening the
+  report externally.
+- Robustness: every tab panel now implements `shutdown()`; MainWindow
+  `closeEvent` stops background workers gracefully (no more
+  "QThread destroyed while running" warnings).
+- Tests: 53 pass, 2 skipped (Windows-only registry tests).
+
 ## v0.4.0 — 2026-10-19
 
 - Updates module is functional (wumgr-style): check for updates via the

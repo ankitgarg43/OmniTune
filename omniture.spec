@@ -35,6 +35,7 @@ exe = EXE(
     a.datas,
     [],
     name="OmniTune",
+    icon="src/omniture/resources/icon/omniture.ico",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

@@ -13,6 +13,7 @@ The tab offers:
 """
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtWidgets import (
+    QFileDialog,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -39,9 +40,7 @@ DESCRIPTION = (
     "undo path before anything changes."
 )
 ROADMAP = [
-    "Custom bloatware lists saved between sessions",
-    "Export / import tweak profiles",
-    "Re-register (reinstall) removed AppX packages",
+    "Per-user vs all-users AppX scope options",
 ]
 
 
@@ -100,6 +99,16 @@ class DebloatPanel(QWidget):
         for btn in (self.apply_btn, self.revert_btn, self.refresh_btn):
             tweak_btns.addWidget(btn)
         tweaks_layout.addLayout(tweak_btns)
+
+        profile_btns = QHBoxLayout()
+        self.export_btn = QPushButton("Export Profile...")
+        self.export_btn.clicked.connect(self._on_export_profile)
+        self.import_btn = QPushButton("Import Profile...")
+        self.import_btn.clicked.connect(self._on_import_profile)
+        profile_btns.addWidget(self.export_btn)
+        profile_btns.addWidget(self.import_btn)
+        profile_btns.addStretch(1)
+        tweaks_layout.addLayout(profile_btns)
         split.addWidget(tweaks_box)
 
         apps_box = QGroupBox("Pre-installed apps (AppX)")
@@ -122,6 +131,9 @@ class DebloatPanel(QWidget):
         self.remove_btn.setProperty("primary", "true")
         self.remove_btn.clicked.connect(self._on_remove_apps)
         apps_layout.addWidget(self.remove_btn)
+        self.rereg_btn = QPushButton("Re-register Selected Apps")
+        self.rereg_btn.clicked.connect(self._on_reregister_apps)
+        apps_layout.addWidget(self.rereg_btn)
         split.addWidget(apps_box)
 
         split.setSizes([560, 420])
@@ -145,8 +157,16 @@ class DebloatPanel(QWidget):
 
     def _set_busy(self, busy):
         for widget in (self.restore_btn, self.apply_btn, self.revert_btn,
-                       self.refresh_btn, self.remove_btn):
+                       self.refresh_btn, self.remove_btn, self.rereg_btn,
+                       self.export_btn, self.import_btn):
             widget.setEnabled(not busy)
+
+    def shutdown(self):
+        """Stop the background worker (called on app close)."""
+        if self._worker is not None and self._worker.isRunning():
+            self._worker.requestInterruption()
+            self._worker.wait(3000)
+        self._worker = None
 
     # -- tweak tree -------------------------------------------------------
     def _build_tree(self):
@@ -203,6 +223,10 @@ class DebloatPanel(QWidget):
         self.app_list.clear()
         for app in BLOATWARE_APPS:
             self._add_app_row(app["pkg"], app["label"], app["default"])
+        for pkg in engine.load_custom_apps():
+            if not any(self.app_list.item(i).data(Qt.UserRole) == pkg
+                       for i in range(self.app_list.count())):
+                self._add_app_row(pkg, pkg, True)
 
     def _add_app_row(self, pkg, label, checked):
         item = QListWidgetItem(f"{label}  ({pkg})")
@@ -227,6 +251,10 @@ class DebloatPanel(QWidget):
                                         "That package is already listed.")
                 return
         self._add_app_row(pkg, pkg, True)
+        customs = [self.app_list.item(i).data(Qt.UserRole)
+                   for i in range(self.app_list.count())]
+        builtin = {app["pkg"] for app in BLOATWARE_APPS}
+        engine.save_custom_apps([p for p in customs if p not in builtin])
         self.custom_pkg.clear()
         self._log(f"Added custom package '{pkg}' to the removal list.")
 
@@ -375,6 +403,67 @@ class DebloatPanel(QWidget):
             return ok_count
 
         self._run_worker(job, lambda _r: None)
+
+    def _on_reregister_apps(self):
+        pkgs = self._checked_app_pkgs()
+        if not pkgs:
+            QMessageBox.information(self, "Debloat",
+                                    "Tick at least one app first.")
+            return
+        self._log(f"Re-registering {len(pkgs)} app package(s)...")
+
+        def job(log):
+            results = engine.reregister_appx(pkgs)
+            ok_count = 0
+            for pkg, (ok, msg) in results.items():
+                log(f"{'Re-registered' if ok else 'FAILED'}: {pkg} - {msg}")
+                ok_count += ok
+            log(f"Done: {ok_count}/{len(pkgs)} re-registered.")
+            return ok_count
+
+        self._run_worker(job, lambda _r: None)
+
+    def _on_export_profile(self):
+        keys = self._checked_tweak_keys()
+        if not keys:
+            QMessageBox.information(self, "Debloat",
+                                    "Tick at least one tweak first.")
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export Tweak Profile", "omniture-debloat.json",
+            "JSON files (*.json)")
+        if not path:
+            return
+        try:
+            count = engine.export_profile(keys, path)
+        except OSError as exc:
+            QMessageBox.warning(self, "Export failed", str(exc))
+            return
+        self._log(f"Exported profile with {count} tweak(s) to {path}.")
+
+    def _on_import_profile(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Import Tweak Profile", "",
+            "JSON files (*.json)")
+        if not path:
+            return
+        try:
+            keys = set(engine.import_profile(path))
+        except (OSError, ValueError) as exc:
+            QMessageBox.warning(self, "Import failed", str(exc))
+            return
+        matched = 0
+        root = self.tree.invisibleRootItem()
+        for i in range(root.childCount()):
+            cat = root.child(i)
+            for j in range(cat.childCount()):
+                child = cat.child(j)
+                key = child.data(0, Qt.UserRole)
+                if key in keys:
+                    child.setCheckState(0, Qt.Checked)
+                    matched += 1
+        self._log(f"Imported profile: {matched} tweak(s) ticked "
+                  f"({len(keys) - matched} unknown).")
 
 
 def create_panel() -> QWidget:

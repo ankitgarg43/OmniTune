@@ -171,3 +171,33 @@ def test_apply_revert_roundtrip(tmp_path, monkeypatch):
     assert engine.read_value("HKCU", r"SOFTWARE\OmniTuneTest",
                              "TweakVal")[0] is False
     assert "__test_tweak__" not in engine.load_backup()
+
+
+# -- v0.5.0 additions ------------------------------------------------------------
+def test_custom_apps_roundtrip(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    assert engine.load_custom_apps() == []
+    engine.save_custom_apps(["Foo.Bar", "Baz.Qux", "Foo.Bar"])
+    assert engine.load_custom_apps() == ["Baz.Qux", "Foo.Bar"]
+
+
+def test_profile_export_import_roundtrip(tmp_path):
+    dest = str(tmp_path / "profile.json")
+    keys = ["telemetry", "copilot", "telemetry"]
+    assert engine.export_profile(keys, dest) == 3
+    assert engine.import_profile(dest) == ["copilot", "telemetry"]
+
+
+def test_import_profile_list_shape(tmp_path):
+    dest = str(tmp_path / "p.json")
+    with open(dest, "w") as fh:
+        fh.write('["a", "b"]')
+    assert engine.import_profile(dest) == ["a", "b"]
+
+
+def test_build_reregister_ps():
+    cmd = engine.build_reregister_ps(["Microsoft.BingNews"])
+    assert "Get-AppxPackage -Name 'Microsoft.BingNews*'" in cmd
+    assert "Add-AppxPackage -Register" in cmd
+    assert "AppXManifest.xml" in cmd
+    assert "OK:Microsoft.BingNews" in cmd

@@ -136,3 +136,41 @@ def test_scan_devices_requires_windows():
         pytest.skip("Windows-only negative test")
     with pytest.raises(RuntimeError):
         drv.scan_devices()
+
+
+# -- v0.5.0 additions --------------------------------------------------------------
+def test_au_policy_values():
+    vals = upd.au_policy_values("notify")
+    assert vals == {"AUOptions": 2, "NoAutoUpdate": 0}
+    assert upd.au_policy_values("off") == {"NoAutoUpdate": 1}
+    assert upd.au_policy_values("auto")["AUOptions"] == 4
+    try:
+        upd.au_policy_values("bogus")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("expected ValueError")
+
+
+def test_au_modes_cover_expected_set():
+    assert set(upd.AU_MODES) == {"notify", "download", "auto", "off"}
+
+
+def test_build_wusa_command():
+    cmd = upd.build_wusa_command(r"C:\x\update.msu")
+    assert cmd[0] == "wusa.exe"
+    assert cmd[1].endswith("update.msu")
+    assert "/quiet" in cmd and "/norestart" in cmd
+
+
+def test_build_add_driver_command():
+    cmd = drv.build_add_driver_command(r"C:\drivers")
+    assert cmd[0] == "pnputil.exe"
+    assert cmd[1] == "/add-driver"
+    assert r"C:\drivers\*.inf" in cmd
+    assert "/subdirs" in cmd and "/install" in cmd
+
+
+def test_build_export_driver_command():
+    cmd = drv.build_export_driver_command(r"D:\backup")
+    assert cmd == ["pnputil.exe", "/export-driver", "*", r"D:\backup"]

@@ -93,3 +93,58 @@ def test_squarify_empty_and_zero():
 def test_squarify_single_item_fills():
     rects = squarify([("only", 42)], 10, 20, 30, 40)
     assert rects == [("only", 10, 20, 30, 40)]
+
+
+# -- v0.5.0 additions: duplicates + export -------------------------------------------
+def _make_dup_tree(tmp_path):
+    from omniture.modules import disk_scanner as ds
+    (tmp_path / "a").mkdir()
+    (tmp_path / "b").mkdir()
+    (tmp_path / "a" / "one.bin").write_bytes(b"x" * 3000)
+    (tmp_path / "b" / "two.bin").write_bytes(b"x" * 3000)  # duplicate
+    (tmp_path / "b" / "three.bin").write_bytes(b"y" * 3000)  # same size, diff
+    (tmp_path / "a" / "tiny.txt").write_bytes(b"hi")
+    tree = ds.scan_path(str(tmp_path))
+    return ds, tree
+
+
+def test_find_duplicates(tmp_path):
+    ds, tree = _make_dup_tree(tmp_path)
+    groups = ds.find_duplicates(tree)
+    assert len(groups) == 1
+    assert groups[0]["size"] == 3000
+    assert len(groups[0]["paths"]) == 2
+    assert all(p.endswith(".bin") for p in groups[0]["paths"])
+
+
+def test_find_duplicates_empty_tree():
+    from omniture.modules import disk_scanner as ds
+    assert ds.find_duplicates({"children": []}) == []
+
+
+def test_export_csv_and_json(tmp_path):
+    import csv
+    import json
+    ds, tree = _make_dup_tree(tmp_path)
+    csv_path = str(tmp_path / "out.csv")
+    json_path = str(tmp_path / "out.json")
+    rows = ds.export_csv(tree, csv_path)
+    assert rows == 4
+    with open(csv_path, newline="") as fh:
+        assert next(csv.reader(fh)) == ["path", "size_bytes"]
+    size = ds.export_json(tree, json_path)
+    assert size > 0
+    with open(json_path) as fh:
+        data = json.load(fh)
+    assert data["files"] == 4
+
+
+def test_iter_files_counts():
+    from omniture.modules import disk_scanner as ds
+    import tempfile, os
+    with tempfile.TemporaryDirectory() as d:
+        open(os.path.join(d, "f1"), "w").write("a")
+        os.mkdir(os.path.join(d, "sub"))
+        open(os.path.join(d, "sub", "f2"), "w").write("b")
+        tree = ds.scan_path(d)
+        assert len(list(ds.iter_files(tree))) == 2

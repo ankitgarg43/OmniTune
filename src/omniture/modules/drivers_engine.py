@@ -142,3 +142,45 @@ def install_driver_updates(update_ids, log=None):
         update_ids, log=log,
         criteria=updates_engine.build_search_criteria(drivers_only=True,
                                                       include_hidden=True))
+
+
+# -- pnputil: local INF install / driver export ----------------------------------
+def build_add_driver_command(folder):
+    """Build the pnputil command installing all INFs under *folder* (pure)."""
+    return ["pnputil.exe", "/add-driver", folder + r"\*.inf",
+            "/subdirs", "/install"]
+
+
+def build_export_driver_command(folder):
+    """Build the pnputil command exporting drivers to *folder* (pure)."""
+    return ["pnputil.exe", "/export-driver", "*", folder]
+
+
+def _run_cmd(argv, timeout=1800):
+    if sys.platform != "win32":
+        raise RuntimeError("pnputil.exe requires Windows.")
+    proc = subprocess.run(argv, capture_output=True, timeout=timeout,
+                          text=True)
+    return proc.returncode, proc.stdout.strip(), proc.stderr.strip()
+
+
+def install_inf_folder(folder, log=None, timeout=1800):
+    """Install every driver INF under *folder* via pnputil."""
+    code, out, err = _run_cmd(build_add_driver_command(folder),
+                              timeout=timeout)
+    summary = out or err or f"pnputil exited with code {code}."
+    if log:
+        for line in summary.splitlines()[-8:]:
+            log(line.strip())
+    return code == 0, summary
+
+
+def export_drivers(folder, log=None, timeout=1800):
+    """Export installed third-party drivers to *folder* via pnputil."""
+    code, out, err = _run_cmd(build_export_driver_command(folder),
+                              timeout=timeout)
+    summary = out or err or f"pnputil exited with code {code}."
+    if log:
+        for line in summary.splitlines()[-8:]:
+            log(line.strip())
+    return code == 0, summary

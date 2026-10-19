@@ -23,6 +23,18 @@ class MainWindow(QMainWindow):
             "Tip: run as administrator — every module needs elevation."
         )
 
+    def closeEvent(self, event):
+        """Let panels stop their background workers before teardown."""
+        for i in range(self.tabs.count()):
+            panel = self.tabs.widget(i)
+            shutdown = getattr(panel, "shutdown", None)
+            if callable(shutdown):
+                try:
+                    shutdown()
+                except Exception:  # noqa: BLE001 - best effort
+                    pass
+        super().closeEvent(event)
+
     def _build_menus(self) -> None:
         file_menu = self.menuBar().addMenu("&File")
         exit_action = file_menu.addAction("E&xit")

@@ -12,6 +12,7 @@ from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
+    QFileDialog,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -34,9 +35,7 @@ DESCRIPTION = (
     "install driver updates from Windows Update."
 )
 ROADMAP = [
-    "Install from local driver folder / INF (pnputil)",
     "Offline driver-pack index support (torrent / 7z)",
-    "Driver export for technicians",
 ]
 
 
@@ -113,10 +112,16 @@ class DriversPanel(QWidget):
         self.install_btn = QPushButton("Install Selected")
         self.install_btn.setProperty("primary", "true")
         self.install_btn.clicked.connect(self._on_install_drivers)
+        self.inf_btn = QPushButton("Install from Folder...")
+        self.inf_btn.clicked.connect(self._on_install_inf)
+        self.export_btn = QPushButton("Export Drivers...")
+        self.export_btn.clicked.connect(self._on_export_drivers)
         self.upd_status = QLabel("No check performed yet.")
         self.upd_status.setWordWrap(True)
         upd_top.addWidget(self.check_btn)
         upd_top.addWidget(self.install_btn)
+        upd_top.addWidget(self.inf_btn)
+        upd_top.addWidget(self.export_btn)
         upd_top.addWidget(self.upd_status, 1)
         upd_layout.addLayout(upd_top)
 
@@ -145,8 +150,16 @@ class DriversPanel(QWidget):
     def _log(self, msg):
         self.log.append(msg)
 
+    def shutdown(self):
+        """Stop the background worker (called on app close)."""
+        if self._worker is not None and self._worker.isRunning():
+            self._worker.requestInterruption()
+            self._worker.wait(3000)
+        self._worker = None
+
     def _set_busy(self, busy):
-        for w in (self.scan_btn, self.check_btn, self.install_btn):
+        for w in (self.scan_btn, self.check_btn, self.install_btn,
+                  self.inf_btn, self.export_btn):
             w.setEnabled(not busy)
 
     def _run_worker(self, fn, on_done):
@@ -301,6 +314,48 @@ class DriversPanel(QWidget):
                     "Installation finished. Please reboot Windows to "
                     "complete it.")
             self._on_check_drivers()
+        self._run_worker(job, finished)
+
+    def _on_install_inf(self):
+        folder = QFileDialog.getExistingDirectory(
+            self, "Select Driver Folder (recursive INF search)")
+        if not folder:
+            return
+        confirm = QMessageBox.question(
+            self, "Install Drivers",
+            f"Install every driver INF found under:\n{folder}\n"
+            "(including subfolders)?",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+        if confirm != QMessageBox.Yes:
+            return
+        self._log(f"Installing drivers from {folder} ...")
+
+        def job(log):
+            ok, _summary = engine.install_inf_folder(folder, log=log)
+            return ok
+
+        def finished(result):
+            status, payload = result
+            if status == "ok" and payload:
+                self._log("Driver installation from folder finished.")
+                self._on_scan()  # refresh hardware view
+        self._run_worker(job, finished)
+
+    def _on_export_drivers(self):
+        folder = QFileDialog.getExistingDirectory(
+            self, "Select Export Folder for Driver Backup")
+        if not folder:
+            return
+        self._log(f"Exporting installed drivers to {folder} ...")
+
+        def job(log):
+            ok, _summary = engine.export_drivers(folder, log=log)
+            return ok
+
+        def finished(result):
+            status, payload = result
+            if status == "ok" and payload:
+                self._log("Driver export finished.")
         self._run_worker(job, finished)
 
 

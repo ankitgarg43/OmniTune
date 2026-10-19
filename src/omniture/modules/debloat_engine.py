@@ -222,3 +222,82 @@ def create_restore_point(description="OmniTune debloat", timeout=600):
     if code == 0:
         return True, "Restore point created."
     return False, (err or f"Checkpoint-Computer exited with code {code}.")
+
+
+# -- custom bloatware list -----------------------------------------------
+def custom_apps_file():
+    """Path of the JSON file holding user-added package fragments."""
+    base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+    return os.path.join(base, "OmniTune", "debloat-custom-apps.json")
+
+
+def load_custom_apps():
+    try:
+        with open(custom_apps_file(), "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+        return [str(p) for p in data] if isinstance(data, list) else []
+    except (OSError, ValueError):
+        return []
+
+
+def save_custom_apps(packages):
+    path = custom_apps_file()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(sorted(set(packages)), fh, indent=2)
+
+
+# -- tweak profiles ---------------------------------------------------------
+def export_profile(keys, dest_path):
+    """Write selected tweak keys as a JSON profile. Returns keys written."""
+    with open(dest_path, "w", encoding="utf-8") as fh:
+        json.dump({"tweaks": sorted(set(keys))}, fh, indent=2)
+    return len(keys)
+
+
+def import_profile(src_path):
+    """Read a tweak profile file. Returns [keys]."""
+    with open(src_path, "r", encoding="utf-8") as fh:
+        data = json.load(fh)
+    if isinstance(data, dict):
+        keys = data.get("tweaks", [])
+    elif isinstance(data, list):
+        keys = data
+    else:
+        keys = []
+    return [str(k) for k in keys]
+
+
+# -- AppX re-register ----------------------------------------------------------
+def build_reregister_ps(packages):
+    """Build PowerShell re-registering installed AppX packages (pure)."""
+    blocks = []
+    for pkg in packages:
+        safe = pkg.replace("'", "''")
+        blocks.append(
+            f"$p = Get-AppxPackage -Name '{safe}*' -ErrorAction SilentlyContinue"
+            f" | Select-Object -First 1; "
+            f"if ($p) {{ Add-AppxPackage -Register "
+            f"\"$($p.InstallLocation)\\AppXManifest.xml\" "
+            f"-DisableDevelopmentMode -ErrorAction Stop; "
+            f"\"OK:{safe}\" }} else {{ \"MISSING:{safe}\" }}"
+        )
+    return "; ".join(blocks)
+
+
+def reregister_appx(packages, timeout=300):
+    """Re-register installed AppX packages. Returns {pkg: (ok, message)}."""
+    results = {}
+    for pkg in packages:
+        try:
+            code, out, err = _run_ps(build_reregister_ps([pkg]),
+                                     timeout=timeout)
+            if f"OK:{pkg}" in out:
+                results[pkg] = (True, "re-registered")
+            elif f"MISSING:{pkg}" in out:
+                results[pkg] = (False, "not installed")
+            else:
+                results[pkg] = (False, err or out or "unknown error")
+        except Exception as exc:  # noqa: BLE001 - surfaced per package
+            results[pkg] = (False, str(exc))
+    return results

@@ -13,6 +13,8 @@ from PySide6.QtCore import Qt, QThread, QStorageInfo, Signal
 from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import (
     QComboBox,
+    QDialog,
+    QFileDialog,
     QHBoxLayout,
     QLabel,
     QMessageBox,
@@ -25,7 +27,14 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .disk_scanner import format_size, largest_files, scan_path
+from .disk_scanner import (
+    export_csv,
+    export_json,
+    find_duplicates,
+    format_size,
+    largest_files,
+    scan_path,
+)
 from .disk_treemap import squarify
 
 TITLE = "Disk"
@@ -38,8 +47,8 @@ ROADMAP = [
     "Interactive treemap with click-to-drill-down",
     "Largest-files view",
     "Safe cleanup: temp files and Recycle Bin (with confirmation)",
-    "Duplicate detection (hash-based) - next",
-    "Scan reports (CSV / JSON export) - next",
+    "Duplicate detection (hash-based)",
+    "Scan reports (CSV / JSON export)",
 ]
 
 # Extension groups -> treemap colors.
@@ -87,6 +96,65 @@ class ScanWorker(QThread):
             self.cancelled.emit()
         else:
             self.finished_tree.emit(tree)
+
+
+class DupWorker(QThread):
+    progressed = Signal(int, int)
+    finished_groups = Signal(list)
+    cancelled = Signal()
+
+    def __init__(self, tree, parent=None):
+        super().__init__(parent)
+        self._tree = tree
+
+    def run(self):
+        try:
+            groups = find_duplicates(
+                self._tree,
+                progress_cb=lambda done, total: self.progressed.emit(done, total),
+                cancel_check=self.isInterruptionRequested)
+        except Exception:
+            self.cancelled.emit()
+            return
+        if self.isInterruptionRequested():
+            self.cancelled.emit()
+        else:
+            self.finished_groups.emit(groups)
+
+
+class DuplicatesDialog(QDialog):
+    def __init__(self, groups, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Duplicate Files")
+        self.resize(820, 480)
+        layout = QVBoxLayout(self)
+        wasted = sum(g["size"] * (len(g["paths"]) - 1) for g in groups)
+        layout.addWidget(QLabel(
+            "%d duplicate group(s) - %s recoverable by keeping one copy each."
+            % (len(groups), format_size(wasted))))
+        table = QTableWidget(len(groups), 3)
+        table.setHorizontalHeaderLabels(["Wasted", "Copies", "Example Path"])
+        table.setEditTriggers(QTableWidget.NoEditTriggers)
+        table.setSelectionBehavior(QTableWidget.SelectRows)
+        table.verticalHeader().setVisible(False)
+        for row, group in enumerate(groups):
+            wasted_item = QTableWidgetItem(
+                format_size(group["size"] * (len(group["paths"]) - 1)))
+            wasted_item.setData(Qt.UserRole,
+                                group["size"] * (len(group["paths"]) - 1))
+            table.setItem(row, 0, wasted_item)
+            table.setItem(row, 1,
+                          QTableWidgetItem(str(len(group["paths"]))))
+            table.setItem(row, 2, QTableWidgetItem(group["paths"][0]))
+            table.item(row, 2).setToolTip("\n".join(group["paths"]))
+        table.setSortingEnabled(True)
+        table.sortByColumn(0, Qt.DescendingOrder)
+        table.resizeColumnsToContents()
+        table.horizontalHeader().setStretchLastSection(True)
+        layout.addWidget(table)
+        close = QPushButton("Close")
+        close.clicked.connect(self.accept)
+        layout.addWidget(close, alignment=Qt.AlignRight)
 
 
 class TreemapWidget(QWidget):
@@ -273,6 +341,7 @@ class DiskPanel(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._worker = None
+        self._dup_worker = None
         self._tree = None
 
         layout = QVBoxLayout(self)
@@ -333,6 +402,15 @@ class DiskPanel(QWidget):
         clean = QHBoxLayout()
         self.status_label = QLabel("Pick a drive and press Scan.")
         clean.addWidget(self.status_label, 1)
+        self.dup_btn = QPushButton("Find Duplicates")
+        self.dup_btn.clicked.connect(self._find_duplicates)
+        clean.addWidget(self.dup_btn)
+        self.export_csv_btn = QPushButton("Export CSV")
+        self.export_csv_btn.clicked.connect(self._export_csv)
+        clean.addWidget(self.export_csv_btn)
+        self.export_json_btn = QPushButton("Export JSON")
+        self.export_json_btn.clicked.connect(self._export_json)
+        clean.addWidget(self.export_json_btn)
         self.clean_temp_btn = QPushButton("Clean Temp Files")
         self.clean_temp_btn.clicked.connect(self._clean_temp)
         clean.addWidget(self.clean_temp_btn)
@@ -340,6 +418,14 @@ class DiskPanel(QWidget):
         self.recycle_btn.clicked.connect(self._empty_bin)
         clean.addWidget(self.recycle_btn)
         layout.addLayout(clean)
+
+    def shutdown(self):
+        """Stop background workers (called on app close)."""
+        self._stop_scan()
+        if self._dup_worker is not None and self._dup_worker.isRunning():
+            self._dup_worker.requestInterruption()
+            self._dup_worker.wait(3000)
+        self._dup_worker = None
 
     # -- scanning -----------------------------------------------------
     def _start_scan(self):
@@ -410,6 +496,76 @@ class DiskPanel(QWidget):
 
     def _go_up(self):
         self.treemap.go_up()
+
+    # -- duplicates & export ----------------------------------------------
+    def _require_tree(self):
+        if not self._tree or self._tree.get("error"):
+            QMessageBox.information(self, "Disk",
+                                    "Run a scan first.")
+            return False
+        return True
+
+    def _find_duplicates(self):
+        if not self._require_tree():
+            return
+        self.progress.setVisible(True)
+        self.progress.setRange(0, 0)
+        self.progress_label.setText("Hashing files to find duplicates...")
+        self._dup_worker = DupWorker(self._tree, self)
+        self._dup_worker.progressed.connect(
+            lambda done, total: self.progress_label.setText(
+                "Hashed %s of %s candidate files..."
+                % (format(done, ","), format(total, ","))))
+        self._dup_worker.finished_groups.connect(self._on_dup_done)
+        self._dup_worker.cancelled.connect(
+            lambda: self.progress_label.setText("Duplicate search cancelled."))
+        self._dup_worker.start()
+
+    def _on_dup_done(self, groups):
+        self.progress.setVisible(False)
+        self._dup_worker = None
+        if not groups:
+            QMessageBox.information(self, "Duplicate Files",
+                                    "No duplicate files found.")
+            self.progress_label.setText("No duplicates found.")
+            return
+        self.progress_label.setText(
+            "%d duplicate group(s) found." % len(groups))
+        DuplicatesDialog(groups, self).exec()
+
+    def _export_csv(self):
+        if not self._require_tree():
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export File List (CSV)", "omniture-scan.csv",
+            "CSV files (*.csv)")
+        if not path:
+            return
+        try:
+            rows = export_csv(self._tree, path)
+        except OSError as exc:
+            QMessageBox.warning(self, "Export failed", str(exc))
+            return
+        QMessageBox.information(
+            self, "Export complete",
+            "Wrote %s file rows to:\n%s" % (format(rows, ","), path))
+
+    def _export_json(self):
+        if not self._require_tree():
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export Scan Report (JSON)", "omniture-scan.json",
+            "JSON files (*.json)")
+        if not path:
+            return
+        try:
+            size = export_json(self._tree, path)
+        except OSError as exc:
+            QMessageBox.warning(self, "Export failed", str(exc))
+            return
+        QMessageBox.information(
+            self, "Export complete",
+            "Wrote scan report (%s) to:\n%s" % (format_size(size), path))
 
     # -- cleanup ------------------------------------------------------
     def _clean_temp(self):
