@@ -1,5 +1,8 @@
 name: Build OmniTune EXE
 
+permissions:
+  contents: write
+
 on:
   push:
     tags:
