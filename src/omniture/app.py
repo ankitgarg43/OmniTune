@@ -2,9 +2,9 @@
 from PySide6.QtWidgets import QMainWindow, QMessageBox, QTabWidget
 
 from . import version
-from .modules import debloat, disk, drivers, updates
+from .modules import debloat, disk, drivers, tuneup, updates
 
-MODULES = (drivers, updates, debloat, disk)
+MODULES = (drivers, updates, debloat, disk, tuneup)
 
 
 class MainWindow(QMainWindow):
@@ -42,7 +42,8 @@ class MainWindow(QMainWindow):
                 "Drivers · Updates · Debloat · Disk<br><br>"
                 "Licensed under GPL-3.0.<br>"
                 "Feature concepts inspired by Snappy Driver Installer, "
-                "WuMgr, Win11Debloat and WinDirStat — every feature is "
-                "reimplemented from scratch; no upstream code is bundled."
+                "WuMgr, Win11Debloat and WinDirStat - every feature is "
+                "reimplemented from scratch; no upstream code is bundled.<br>"
+                "The TuneUp tab runs the bundled PC-TuneUp script verbatim."
             ),
         )

@@ -3,7 +3,7 @@ from PySide6.QtWidgets import QApplication, QTabWidget
 
 from omniture import version
 from omniture.app import MainWindow
-from omniture.modules import debloat, disk, drivers, updates
+from omniture.modules import debloat, disk, drivers, tuneup, updates
 
 
 def test_version_format():
@@ -13,7 +13,7 @@ def test_version_format():
 
 
 def test_modules_expose_panel_factory():
-    for mod in (drivers, updates, debloat, disk):
+    for mod in (drivers, updates, debloat, disk, tuneup):
         assert callable(mod.create_panel)
         assert mod.TITLE
         assert mod.DESCRIPTION
@@ -24,10 +24,11 @@ def test_main_window_has_four_tabs():
     app = QApplication.instance() or QApplication([])
     window = MainWindow()
     assert isinstance(window.tabs, QTabWidget)
-    assert window.tabs.count() == 4
+    assert window.tabs.count() == 5
     assert window.tabs.tabText(0) == "Drivers"
     assert window.tabs.tabText(1) == "Updates"
     assert window.tabs.tabText(2) == "Debloat"
     assert window.tabs.tabText(3) == "Disk"
+    assert window.tabs.tabText(4) == "TuneUp"
     window.close()
     app.quit()

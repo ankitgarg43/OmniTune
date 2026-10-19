@@ -1,5 +1,9 @@
 name: Build OmniTune EXE
 
+# The release step (softprops/action-gh-release) needs to create the
+# GitHub Release and generate release notes, which requires contents:write.
+# Without this, new repos' default read-only GITHUB_TOKEN fails with
+# "Resource not accessible by integration".
 permissions:
   contents: write
 

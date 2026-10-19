@@ -10,7 +10,10 @@ a = Analysis(
     ["src/omniture/__main__.py"],
     pathex=["src"],
     binaries=[],
-    datas=[],
+    datas=[
+        # Bundled resources (TuneUp PowerShell script, future assets).
+        ("src/omniture/resources", "omniture/resources"),
+    ],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

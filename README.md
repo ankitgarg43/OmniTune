@@ -8,12 +8,13 @@
 | Updates | Full Windows Update manager: search, install, hide/unhide, uninstall updates | [WuMgr](https://github.com/DavidXanatos/wumgr) (GPL-3.0) |
 | Debloat | Remove pre-installed apps, disable telemetry, apply curated Windows tweaks — with undo | [Win11Debloat](https://github.com/Raphire/Win11Debloat) (MIT) |
 | Disk | Disk usage analyzer with interactive treemap, large-file finder, duplicate detection, cleanup | [WinDirStat](https://github.com/windirstat/windirstat) (GPL-3.0) |
+| TuneUp | One-click PC health pass: restore point, inventory, cleanup, winget + Windows Update, DISM/SFC repair, HTML report | Bundled `PC-TuneUp-v1.ps1` (runs verbatim, inspectable in-app) |
 
 OmniTune is a clean rebuild: every feature is reimplemented from scratch in Python. We credit and thank the upstream projects above — no upstream code or binaries are shipped inside OmniTune.
 
 ## Status
 
-v0.1.0 — project scaffold. The app shell runs with four module tabs; module implementations land one at a time. See [CHANGELOG.md](CHANGELOG.md) and the in-app roadmaps.
+v0.2.0 — working Disk analyzer (scan, treemap, largest files, temp/Recycle Bin cleanup) and a TuneUp tab that runs the bundled PC-TuneUp script with live output. Drivers / Updates / Debloat are still placeholders landing one at a time. See [CHANGELOG.md](CHANGELOG.md).
 
 Planned build order: Disk → Debloat → Updates → Drivers.
 
