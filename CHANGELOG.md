@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.3.0 — 2026-10-19
+
+- Debloat module is functional with Win11Debloat-style coverage: 26 registry
+  tweaks in 6 categories (Privacy & Telemetry, AI Features, Start/Search/
+  Taskbar, File Explorer, Gaming, Lock Screen) with live applied/not-applied
+  state, one-click apply/revert, and pre-change snapshots stored in
+  `%LOCALAPPDATA%\OmniTune\debloat-backup.json`.
+- Pre-installed AppX removal: curated list of 28 packages (safe ones
+  pre-checked, risky ones opt-in), filter box, custom package entries,
+  per-package result reporting. Runs in a background thread; removes for all
+  users.
+- Safety: one-click system restore point, plus an automatic restore point
+  before applying tweaks or removing apps (skipped if one was already made
+  this session). Every destructive action has a confirmation dialog.
+- Catalog/engine/tests: `debloat_catalog.py` (data), `debloat_engine.py`
+  (registry/AppX/restore-point logic), `tests/test_debloat.py` (catalog
+  integrity, backup round-trip, PowerShell builders; registry tests run on
+  Windows CI only). Clean-room reimplementation — no Win11Debloat code used.
+
 ## v0.2.0 — 2026-10-19
 
 - Disk analyzer is functional: background drive scan with progress, interactive

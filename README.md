@@ -14,7 +14,7 @@ OmniTune is a clean rebuild: every feature is reimplemented from scratch in Pyth
 
 ## Status
 
-v0.2.0 — working Disk analyzer (scan, treemap, largest files, temp/Recycle Bin cleanup) and a TuneUp tab that runs the bundled PC-TuneUp script with live output. Drivers / Updates / Debloat are still placeholders landing one at a time. See [CHANGELOG.md](CHANGELOG.md).
+v0.3.0 — working Disk analyzer, TuneUp tab, and a functional Debloat module (26 tweaks + AppX removal with restore-point safety and full revert). Drivers / Updates are still placeholders landing one at a time. See [CHANGELOG.md](CHANGELOG.md).
 
 Planned build order: Disk → Debloat → Updates → Drivers.
 
