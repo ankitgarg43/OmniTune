@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.4.0 — 2026-10-19
+
+- Updates module is functional (wumgr-style): check for updates via the
+  Windows Update Agent API, download & install selected updates, hide/unhide
+  updates, and browse install history — all in background threads with COM
+  apartment handling. Reboot-required results are surfaced to the user.
+- Drivers module is functional (phase 1): PnP hardware scan with
+  problem-device highlighting (error/unknown status rows flagged with the
+  CM_PROB meaning), on-demand driver details (version/date/provider), and
+  driver updates discovered + installed through Windows Update.
+- Engines: `updates_engine.py` (WUA COM via pywin32) and `drivers_engine.py`
+  (Get-PnpDevice scan + WUA driver search). Pure helpers unit-tested in
+  `tests/test_updates_drivers.py`. Clean-room reimplementations — no wumgr
+  or SDI code used.
+- Roadmap left in-app: per-update progress bars, .msu offline install,
+  pnputil INF install, SDI-style offline driverpacks.
+
 ## v0.3.0 — 2026-10-19
 
 - Debloat module is functional with Win11Debloat-style coverage: 26 registry

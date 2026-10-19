@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "omniture"
-version = "0.3.0"
+version = "0.4.0"
 description = "All-in-one open-source Windows maintenance toolkit: drivers, updates, debloat, disk analysis."
 readme = "README.md"
 license = { text = "GPL-3.0-or-later" }
